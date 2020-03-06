@@ -7,9 +7,10 @@ from web3 import Web3
 
 from pymaker import Address, Wad, Contract
 from pymaker.approval import directly
-from pyexchange.airswap import AirswapContract
+from pyexchange.airswap_v2 import AirswapContract, AirswapApi
 from pymaker.token import DSToken
 
+# https://airswap-maker.now.sh
 
 def test_all_trades():
 
@@ -44,5 +45,9 @@ def test_our_trades():
     print("airswap our trades -->")
     pprint.pprint(eth_dai_trades)
 
-test_all_trades()
-test_our_trades()
+# test_all_trades()
+# test_our_trades()
+
+airswap = AirswapApi('http://localhost:3000', 9.5)
+
+print(airswap.set_intents())
