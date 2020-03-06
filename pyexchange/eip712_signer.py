@@ -21,7 +21,7 @@ class Signer:
 
     def sign_order(self, order) -> dict: 
         SWAP_VERSION = "2"
-        SWAP_DOMAIN = "SWAP
+        SWAP_DOMAIN = "SWAP"
         ERC_20_INTERFACE_ID = bytes.fromhex("36372b07")
 
         # TODO:
@@ -122,12 +122,12 @@ class Signer:
         # The bitcoin.ecdsa_raw_sign method we are using may return r & s values that are under 66 bytes, so check for
         # that and pad with '0' if necessary to align with bytes32 types
         if len(s) < 66:
-        diff = 66 - len(s)
-        s = "0x" + "0" * diff + s[2:]
+            diff = 66 - len(s)
+            s = "0x" + "0" * diff + s[2:]
 
         if len(r) < 66:
-        diff = 66 - len(r)
-        r = "0x" + "0" * diff + r[2:]
+            diff = 66 - len(r)
+            r = "0x" + "0" * diff + r[2:]
 
         # version is 0x45 for personalSign
         signed_order = {
