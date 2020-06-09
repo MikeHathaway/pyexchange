@@ -76,7 +76,8 @@ class ErisxApi(PyexAPI):
 
     def __init__(self, fix_trading_endpoint: str, fix_trading_user: str,
                  fix_marketdata_endpoint: str, fix_marketdata_user: str, password: str,
-                 clearing_url: str, api_key: str, api_secret: str, certs: str = None, account_id: int = 0):
+                 clearing_url: str, api_key: str, api_secret: str, certs: str = None,
+                 account_id: int = 0, is_prod: bool = True):
         assert (isinstance(fix_trading_endpoint, str) or (fix_trading_endpoint is None))
         assert (isinstance(fix_trading_user, str) or (fix_trading_user is None))
         assert (isinstance(fix_marketdata_endpoint, str) or (fix_marketdata_endpoint is None))
@@ -87,6 +88,7 @@ class ErisxApi(PyexAPI):
         assert (isinstance(api_secret, str) or (api_secret is None))
         assert (isinstance(certs, str) or (certs is None))
         assert (isinstance(account_id, int))
+        assert (isinstance(is_prod, bool))
 
         if certs is not None:
             certs = self._parse_cert_string(certs)
@@ -109,6 +111,9 @@ class ErisxApi(PyexAPI):
 
         # store the account id used to retrieve trades and balances
         self.account_id = self.get_account(account_id)
+
+        # flag used to determine if test asset types should be checked for
+        self.is_prod = is_prod
 
     def __del__(self):
         self.fix_marketdata.logout()
@@ -144,6 +149,12 @@ class ErisxApi(PyexAPI):
     def get_balances(self):
         response = self._http_post("balances", {"account_id": self.account_id})
         if "balances" in response:
+            if not self.is_prod:
+                for balance in response["balances"]["balances"]:
+                    if balance["asset_type"] == "TETH":
+                        balance["asset_type"] = "ETH"
+                    elif balance["asset_type"] == "TBTC":
+                        balance["asset_type"] = "BTC"
             return response["balances"]
         else:
             raise RuntimeError("Couldn't interpret response")
