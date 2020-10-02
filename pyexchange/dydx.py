@@ -17,7 +17,12 @@
 
 import logging
 import dateutil.parser
+import os
+import pytz
+import time
 
+from datetime import datetime
+from datetime import date
 from decimal import Decimal
 from pprint import pformat
 from typing import List, Optional
@@ -293,14 +298,49 @@ class DydxApi(PyexAPI):
         return list(map(lambda item: DydxTrade.from_message(item, pair, market_info), list(result['fills'])))
 
     def get_all_trades(self, pair: str, page_number: int = 1) -> List[Trade]:
+        """
+            Offer the capacity to retrieve the last 24 hours of data, in the event the syncer was done.
+            Store the timestamp of the last trade recieved, and use that timestamp as the starting point for the next batch of trades.
+            Continue until the timestam is less than some preset date.
+
+            Otherwise, fall back on the websocket subscription.
+        """
         assert (isinstance(pair, str))
         assert (page_number == 1)
 
         ## Specify which side of the order book to retrieve with pair
         # E.g WETH-DAI will not retrieve DAI-WETH
-        result = self.client.get_fills(market=[pair], limit=100)['fills']
-        trades = filter(lambda item: item['status'] == 'CONFIRMED', result)
+        # maximum limit is 100
+
+        # TODO: add support for buy and sell sides
+
+        trades = []
+        dates_to_check = [date.today().isoformat()]
+
+        # today = datetime.datetime.now()
+        # today += datetime.timedelta(hours=6).isoformat()
+        # today += datetime.timedelta(hours=6)
+
+        timestamp = time.time()
+        self.logger.info(f"timestamp: {timestamp}")
+        dt = datetime.fromtimestamp(timestamp, pytz.timezone('UTC'))
+        today = dt.replace(microsecond=0, tzinfo=datetime.timezone(offset=utc_offset)).isoformat()
+        # today = dt.isoformat()
+
+        self.logger.info(f"dates to check: {today}")
+
+        for d in dates_to_check:
+
+            result = self.client.get_fills(
+                market=[pair],
+                limit=100,
+                startingBefore=today,
+                side='BUY'
+                )['fills']
+
+            new_trades = list(filter(lambda item: item['status'] == 'CONFIRMED', result))
+            trades.append(new_trades)
 
         market_info = self.market_info[pair]
 
-        return list(map(lambda item: DydxTrade.from_message(item, pair, market_info), trades))
+        return list(map(lambda item: DydxTrade.from_message(item, pair, market_info), trades[0]))
