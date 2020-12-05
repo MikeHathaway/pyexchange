@@ -45,6 +45,15 @@ class ErisxOrder(Order):
                      price=Wad.from_number(item['price']),
                      amount=Wad.from_number(item['amount']))
 
+    @staticmethod
+    def from_rest_message(item: dict) -> Order:
+        return Order(order_id=item['oid'],
+                     timestamp=item['created_at'],
+                     pair=item['book'],
+                     is_sell=True if item['side'] == 'sell' else False,
+                     price=Wad.from_number(item['price']),
+                     amount=Wad.from_number(item['amount']))
+
 
 class ErisxTrade(Trade):
 
@@ -104,6 +113,10 @@ class ErisxApi(PyexAPI):
             self.fix_marketdata_user = fix_marketdata_user
 
         self.clearing_url = clearing_url
+        # TODO: https://trade-api.erisx.com/rest-api/order-mass-status
+        self.order_management_url = order_management_url
+        # TODO: add partyID
+        self.partyID = ""
         self.api_secret = api_secret
         self.api_key = api_key
         self.password = password
@@ -187,14 +200,14 @@ class ErisxApi(PyexAPI):
 
     def get_account(self, account_id: int) -> str:
         # Call into the /accounts method of ErisX Clearing WebAPI, and returns a string id used to identify the account.
-        response = self._http_post("accounts", {})
+        response = self._http_post(self.clearing_url, "accounts", {})
         if "accounts" in response:
             return response["accounts"][account_id]["account_id"]
         else:
             raise RuntimeError("Couldn't interpret response")
 
     def get_balances(self):
-        response = self._http_post("balances", {"account_id": self.account_id})
+        response = self._http_post(self.clearing_url, "balances", {"account_id": self.account_id})
         if "balances" in response:
             return response["balances"]
         else:
@@ -212,6 +225,14 @@ class ErisxApi(PyexAPI):
         unfiltered_orders = self.fix_trading.wait_for_get_orders_response()
 
         return list(map(lambda item: ErisxOrder.from_message(item), ErisxFix.parse_orders_list(unfiltered_orders)))
+
+    def get_orders_rest(self, pair: str) -> List[Order]:
+        response = self._http_post(self.order_management_url, "order-mass-status", {"partyID": self.partyID})
+        if "orderStatuses" in response:
+            all_order_statuses = response["orderStatuses"]
+            return list(map(lambda item: ErisxOrder.from_rest_message(all_order_statuses)))
+        else:
+            raise RuntimeError("Couldn't interpret response")
 
     def sync_orders(self, orders: List[Order]) -> List[Order]:
         """
@@ -327,33 +348,34 @@ class ErisxApi(PyexAPI):
 
     # Trade information is only retrieved on a per session basis through FIX (Page 20 of Spec)
     def get_trades(self, pair: str, page_number: int = 8) -> List[Trade]:
-        response = self._http_post("trades", {"account_id": self.account_id})
+        response = self._http_post(self.clearing_url, "trades", {"account_id": self.account_id})
         return list(map(lambda trade: ErisxTrade.from_message(trade), response["trades"]))
 
     # TODO: Not currently available
     def get_all_trades(self, pair, page_number) -> List[Trade]:
        pass
 
-    def _http_get(self, resource: str, params=""):
+    def _http_get(self, host, resource: str, params=""):
+        assert (isinstance(host, str))
         assert (isinstance(resource, str))
         assert (isinstance(params, str))
 
         if params:
-            request = f"{resource}?{params}"
-        else:
-            request = resource
+            resource = f"{resource}?{params}"
 
         return self._result(
-            requests.get(url=f"{self.clearing_url}{request}",
-                         headers=self._create_http_headers("GET", request, ""),
+            requests.get(url=f"{host}{resource}",
+                         headers=self._create_http_headers("GET", resource, ""),
                          timeout=self.timeout))
 
-    def _http_post(self, resource: str, params: dict):
+    def _http_post(self, host: str, resource: str, params: dict):
+        assert (isinstance(host, str))
         assert (isinstance(resource, str))
         assert (isinstance(params, dict))
+
         # Auth headers are required for all requests
         return self._result(
-            requests.post(url=f"{self.clearing_url}{resource}",
+            requests.post(url=f"{host}{resource}",
                           data=params,
                           headers=self._create_http_headers("POST", resource),
                           timeout=self.timeout))
